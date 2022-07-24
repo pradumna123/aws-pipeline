@@ -15,7 +15,7 @@ export class PipelineStack extends Stack {
     });
 
     const Cdksourceoutput= new Artifact('cdkSourceOutput');
-    const sourceoutput= new Artifact('SourceOutput');
+    const Servicesourceoutput= new Artifact('SourceOutput');
 
     pipeline.addStage({
       stageName:"Source",
@@ -35,7 +35,7 @@ export class PipelineStack extends Stack {
             branch:"main",
             actionName:"Service_Source", 
             oauthToken:SecretValue.secretsManager('github-token'),
-            output:sourceoutput
+            output:Servicesourceoutput 
           })
       ]
     })
@@ -43,6 +43,8 @@ export class PipelineStack extends Stack {
     
 
      const cdkBuildOutput = new Artifact("CdkBuildOutput");
+
+     const ServiceBuildOutput = new Artifact("ServiceBuildOutput");
 
      pipeline.addStage({
       stageName:'Build', 
@@ -56,6 +58,18 @@ export class PipelineStack extends Stack {
               buildImage:LinuxBuildImage.STANDARD_5_0
             },
             buildSpec:BuildSpec.fromSourceFilename('build-specs/cdk-build-spec.yml')
+
+          })
+        }),
+        new CodeBuildAction({
+          actionName:"SERVICE_BUILD", 
+          input:Servicesourceoutput, 
+          outputs:[ServiceBuildOutput], 
+          project: new PipelineProject(this,'ServiceBuildProject',{
+            environment:{
+              buildImage:LinuxBuildImage.STANDARD_5_0
+            },
+            buildSpec:BuildSpec.fromSourceFilename('build-specs/service-build-spec.yml')
 
           })
         })
