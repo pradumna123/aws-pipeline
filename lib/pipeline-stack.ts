@@ -1,5 +1,5 @@
-import { Stack, StackProps } from 'aws-cdk-lib';
-import { Construct } from 'constructs';
+
+import { Construct, Stack, StackProps } from "@aws-cdk/core";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class PipelineStack extends Stack {
