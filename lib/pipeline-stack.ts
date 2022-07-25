@@ -3,13 +3,18 @@ import { Construct, SecretValue, Stack, StackProps } from "@aws-cdk/core";
 import {Artifact, Pipeline} from "@aws-cdk/aws-codepipeline";
 import {CloudFormationCreateUpdateStackAction, CodeBuildAction, GitHubSourceAction} from "@aws-cdk/aws-codepipeline-actions";
 import { BuildSpec, LinuxBuildImage, PipelineProject } from "@aws-cdk/aws-codebuild";
+import { ServiceStack } from "./service-stack";
 
 export class PipelineStack extends Stack {
+  private readonly pipeline:Pipeline;
+  private readonly cdkBuildOutput:Artifact;
+  private readonly ServiceBuildOutput:Artifact;
+
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
 
-    const pipeline=  new Pipeline(this, 'Pipeline',{
+     this.pipeline=  new Pipeline(this, 'Pipeline',{
       pipelineName:"Pipeline",
       crossAccountKeys:false, 
       restartExecutionOnUpdate:true,
@@ -18,7 +23,7 @@ export class PipelineStack extends Stack {
     const Cdksourceoutput= new Artifact('cdkSourceOutput');
     const Servicesourceoutput= new Artifact('SourceOutput');
 
-    pipeline.addStage({
+    this.pipeline.addStage({
       stageName:"Source",
       actions:[
         new GitHubSourceAction({
@@ -43,17 +48,17 @@ export class PipelineStack extends Stack {
    
     
 
-     const cdkBuildOutput = new Artifact("CdkBuildOutput");
+      this.cdkBuildOutput = new Artifact("CdkBuildOutput");
 
-     const ServiceBuildOutput = new Artifact("ServiceBuildOutput");
+      this.ServiceBuildOutput = new Artifact("ServiceBuildOutput");
 
-     pipeline.addStage({
+     this.pipeline.addStage({
       stageName:'Build', 
       actions:[
         new CodeBuildAction({
           actionName:"CDK_BUILD", 
           input:Cdksourceoutput, 
-          outputs:[cdkBuildOutput], 
+          outputs:[this.cdkBuildOutput], 
           project: new PipelineProject(this,'CdkBuildProject',{
             environment:{
               buildImage:LinuxBuildImage.STANDARD_5_0
@@ -65,7 +70,7 @@ export class PipelineStack extends Stack {
         new CodeBuildAction({
           actionName:"SERVICE_BUILD", 
           input:Servicesourceoutput, 
-          outputs:[ServiceBuildOutput], 
+          outputs:[this.ServiceBuildOutput], 
           project: new PipelineProject(this,'ServiceBuildProject',{
             environment:{
               buildImage:LinuxBuildImage.STANDARD_5_0
@@ -79,20 +84,46 @@ export class PipelineStack extends Stack {
 
      });
 
-     pipeline.addStage({
+     this.pipeline.addStage({
       stageName:"Pipeline_Update", 
       actions:[
         new CloudFormationCreateUpdateStackAction({
           actionName:'Pipeline_Update', 
           stackName:'PipelineStack', 
-          templatePath:cdkBuildOutput.atPath("PipelineStack.template.json"),
+          templatePath:this.cdkBuildOutput.atPath("PipelineStack.template.json"),
           adminPermissions:true
         }),
       ],
      });
 
 
-
+    
 
   }
+
+
+  public addServiceStage(serviceStack: ServiceStack, stageName: string) {
+    this.pipeline.addStage({
+      stageName: stageName,
+      actions: [
+        new CloudFormationCreateUpdateStackAction({
+          actionName: "Service_Update",
+          stackName: serviceStack.stackName,
+          templatePath: this.cdkBuildOutput.atPath(
+            `${serviceStack.stackName}.template.json`
+          ),
+          adminPermissions: true,
+          parameterOverrides: {
+            ...serviceStack.serviceCode.assign(
+              this.ServiceBuildOutput.s3Location
+            ),
+          },
+          extraInputs: [this.ServiceBuildOutput],
+        }),
+      ],
+    });
+  }
+  
+
+  
 }
